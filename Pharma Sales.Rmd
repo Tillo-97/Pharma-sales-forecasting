@@ -1,0 +1,628 @@
+## Dataset Features ##
+The dataset consists of transactional data collected in 6 years (period 2014-2019), indicating date and time of sale, pharmaceutical drug brand name and sold quantity, exported from Point-of-Sale system in the individual pharmacy. Selected group of drugs from the dataset (57 drugs) is classified to the following Anatomical Therapeutic Chemical (ATC) Classification System categories:
+
+M01AB - Anti-inflammatory and antirheumatic products, non-steroids, Acetic acid derivatives and related substances
+M01AE - Anti-inflammatory and antirheumatic products, non-steroids, Propionic acid derivatives
+N02BA - Other analgesics and antipyretics, Salicylic acid and derivatives
+N02BE/B - Other analgesics and antipyretics, Pyrazolones and Anilides
+N05B - Psycholeptics drugs, Anxiolytic drugs
+N05C - Psycholeptics drugs, Hypnotics and sedatives drugs
+R03 - Drugs for obstructive airway diseases
+R06 - Antihistamines for systemic use
+
+Sales data are re sampled to the hourly, daily, weekly and monthly periods. Data is already pre-processed, where processing included outlier detection and treatment and missing data imputation.
+
+## Exploratory Data Analysis ##
+```{r}
+#Import necessary libraries
+library(forecast)
+library(tseries)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+```
+
+```{r}
+# Read CSV file
+hourly <- read.csv("saleshourly.csv")
+daily <- read.csv("salesdaily.csv")
+weekly <- read.csv("salesweekly.csv")
+monthly <- read.csv("salesmonthly.csv")
+```
+
+Below we will compute the mean, median and standard deviation of the sales data to gain more insights on the data.
+```{r}
+# Calculate basic statistics for each drug category
+# Drug categories
+drug_categories <- c("M01AB", "M01AE", "N02BA", "N02BE", "N05B", "N05C", "R03", "R06")
+
+# Function to calculate basic statistics for a given dataset
+compute_basic_stats <- function(data, dataset_name) {
+  basic_stats <- data.frame()
+  
+  for (drug in drug_categories) {
+    drug_stats <- data %>%
+      summarize(
+        Dataset = dataset_name,
+        Category = drug,
+        Mean = mean(!!sym(drug), na.rm = TRUE),
+        Median = median(!!sym(drug), na.rm = TRUE),
+        StdDev = sd(!!sym(drug), na.rm = TRUE)
+      )
+    basic_stats <- bind_rows(basic_stats, drug_stats)
+  }
+  
+  return(basic_stats)
+}
+
+# Compute basic statistics for daily, weekly, and monthly datasets
+hourly_stats <- compute_basic_stats(hourly, "Hourly")
+daily_stats <- compute_basic_stats(daily, "Daily")
+weekly_stats <- compute_basic_stats(weekly, "Weekly")
+monthly_stats <- compute_basic_stats(monthly, "Monthly")
+
+# Combine statistics for all datasets
+all_stats <- bind_rows(hourly_stats, daily_stats, weekly_stats, monthly_stats)
+
+# Print summary statistics for each drug category in each dataset
+print(all_stats)
+```
+
+Below we convert the datum columns in each dataframe to the appropriate type to help us when it comes to the forecasting section
+```{r}
+# Convert the 'datum' column to a date/time format (POSIXct) for hourly sales
+hourly$datum <- as.POSIXct(hourly$datum, format = "%m/%d/%Y %H:%M")
+
+# Convert the 'datum' column to Date type for daily sales
+daily$datum <- as.Date(daily$datum, format="%m/%d/%Y")
+
+# Convert the 'datum' column to Date type for weekly sales
+weekly$datum <- as.Date(weekly$datum, format="%m/%d/%Y")
+
+# Convert the 'datum' column to Date type for monthly sales
+monthly$datum <- as.Date(monthly$datum, format="%d/%m/%Y")
+```
+
+
+Below we plot the weekly sales data as a timeseries on a yearly timeframe to understand the sales patterns for each drug
+```{r}
+# Gather drug categories into a single column
+weekly_data_long <- weekly %>%
+  dplyr::select(datum, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -datum)
+
+# Create a time-series plot for each drug category
+ggplot(weekly_data_long, aes(x = datum, y = Sales, color = Category)) +
+  geom_line() +
+  labs(title = "Weekly Sales Trends by Drug Category",
+       x = "Date",
+       y = "Sales") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+```
+
+Below we plot the monthly sales data as a timeseries on a yearly timeframe to understand the sales patterns for each drug
+```{r}
+# Gather drug categories into a single column
+monthly_data_long <- monthly %>%
+  dplyr::select(datum, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -datum)
+
+# Create a time-series plot for each drug category
+ggplot(monthly_data_long, aes(x = datum, y = Sales, color = Category)) +
+  geom_line() +
+  labs(title = "Monthly Sales Trends by Drug Category",
+       x = "Date",
+       y = "Sales") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+```
+
+Below we make box plots of each drug on different days of the week.
+```{r}
+# Extract the day of the week information
+daily.box <- daily %>%
+  mutate(weekday = weekdays(datum))
+
+# Gather the drug categories into a single column
+daily_data_long.box <- daily.box %>%
+  dplyr::select(weekday, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -weekday)
+
+# Reorder the days of the week
+daily_data_long.box$weekday <- factor(daily_data_long.box$weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+# Create boxplots for sales of different drugs for different days of the week
+ggplot(daily_data_long.box, aes(x = weekday, y = Sales, fill = Category)) +
+  geom_boxplot() +
+  labs(title = "Sales of Different Drugs for Different Days of the Week",
+       x = "Day of the Week",
+       y = "Sales") +
+  theme_minimal() +
+  theme(legend.title = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ Category, scales = "free_y", ncol = 2)
+```
+
+Below we make box plots of each drug on different months of the year.
+```{r}
+# Extract the month information
+monthly.box <- daily %>%
+  mutate(month = format(datum, "%B"))
+
+# Gather the drug categories into a single column
+monthly_data_long.box <- monthly.box %>%
+  dplyr::select(month, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -month)
+
+# Reorder the months
+monthly_data_long.box$month <- factor(monthly_data_long.box$month, levels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))
+
+# Create boxplots for sales of different drugs for different months
+ggplot(monthly_data_long.box, aes(x = month, y = Sales, fill = Category)) +
+  geom_boxplot() +
+  labs(title = "Sales of Different Drugs for Different Months",
+       x = "Month",
+       y = "Sales") +
+  theme_minimal() +
+  theme(legend.title = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ Category, scales = "free_y", ncol = 2)
+```
+
+Below we make bar plots of each drug on different hours of the day.
+```{r}
+# Calculate the total sales for each hour of the day
+hourly_sales.plot <- hourly %>%
+  dplyr::select(Hour, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -Hour) %>%
+  group_by(Hour, Category) %>%
+  summarise(TotalSales = sum(Sales, na.rm = TRUE))
+
+# Create a bar plot to visualize drug sales for different hours of the day
+ggplot(hourly_sales.plot, aes(x = Hour, y = TotalSales, fill = Category)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Drug Sales by Hour",
+       x = "Hour of the Day",
+       y = "Total Sales") +
+  scale_x_continuous(breaks = seq(0, 23, 1)) +
+  theme_minimal() +
+  theme(legend.title = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_wrap(~ Category, scales = "free_y", ncol = 2)
+```
+
+Below we make box plots of each drug on different hours of the day. However, there are too many outliers so the bar plots are better.
+```{r}
+# Gather drug categories into a single column
+hourly_data_long.box <- hourly %>%
+  dplyr::select(Hour, M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  gather(key = "Category", value = "Sales", -Hour)
+
+# Create box plots for drug sales by hour for each drug category
+ggplot(hourly_data_long.box, aes(x = factor(Hour), y = Sales, fill = Category)) +
+  geom_boxplot() +
+  labs(title = "Drug Sales by Hour",
+       x = "Hour of the Day",
+       y = "Sales") +
+  scale_x_discrete(name = "Hour of the Day", breaks = seq(0, 23, 1)) +
+  theme_minimal()  +
+  theme(legend.title = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ Category, scales = "free_y", ncol = 2)
+```
+
+Below we have carried out STL decomposition of the timeseries to understand the impact of trend and seasonality in our data.
+```{r}
+# Convert the monthly_data_long into a wide format to create time-series objects
+monthly_data_wide <- monthly_data_long %>%
+  spread(key = Category, value = Sales)
+
+# Create a time-series object for each drug category
+ts_monthly_M01AB <- ts(monthly_data_wide$M01AB, frequency = 12)
+ts_monthly_M01AE <- ts(monthly_data_wide$M01AE, frequency = 12)
+ts_monthly_N02BA <- ts(monthly_data_wide$N02BA, frequency = 12)
+ts_monthly_N02BE <- ts(monthly_data_wide$N02BE, frequency = 12)
+ts_monthly_N05B <- ts(monthly_data_wide$N05B, frequency = 12)
+ts_monthly_N05C <- ts(monthly_data_wide$N05C, frequency = 12)
+ts_monthly_R03 <- ts(monthly_data_wide$R03, frequency = 12)
+ts_monthly_R06 <- ts(monthly_data_wide$R06, frequency = 12)
+
+# Perform STL decomposition for each drug category
+stl_monthly_M01AB <- stl(ts_monthly_M01AB, s.window = "periodic")
+stl_monthly_M01AE <- stl(ts_monthly_M01AE, s.window = "periodic")
+stl_monthly_N02BA <- stl(ts_monthly_N02BA, s.window = "periodic")
+stl_monthly_N02BE <- stl(ts_monthly_N02BE, s.window = "periodic")
+stl_monthly_N05B <- stl(ts_monthly_N05B, s.window = "periodic")
+stl_monthly_N05C <- stl(ts_monthly_N05C, s.window = "periodic")
+stl_monthly_R03 <- stl(ts_monthly_R03, s.window = "periodic")
+stl_monthly_R06 <- stl(ts_monthly_R06, s.window = "periodic")
+
+# Plot the STL decomposition components for M01AB
+plot(stl_monthly_M01AB, main = "STL Decomposition of Monthly M01AB Sales")
+plot(stl_monthly_M01AE, main = "STL Decomposition of Monthly M01AE Sales")
+plot(stl_monthly_N02BA, main = "STL Decomposition of Monthly N02BA Sales")
+plot(stl_monthly_N02BE, main = "STL Decomposition of Monthly N02BE Sales")
+plot(stl_monthly_N05B, main = "STL Decomposition of Monthly N05B Sales")
+plot(stl_monthly_N05C, main = "STL Decomposition of Monthly N05C Sales")
+plot(stl_monthly_R03, main = "STL Decomposition of Monthly R03 Sales")
+plot(stl_monthly_R06, main = "STL Decomposition of Monthly R06 Sales")
+```
+
+
+```{r}
+# Convert the weekly_data_long into a wide format to create time-series objects
+weekly_data_wide <- weekly_data_long %>%
+  spread(key = Category, value = Sales)
+
+# Create a time-series object for each drug category
+ts_weekly_M01AB <- ts(weekly_data_wide$M01AB, frequency = 52)
+ts_weekly_M01AE <- ts(weekly_data_wide$M01AE, frequency = 52)
+ts_weekly_N02BA <- ts(weekly_data_wide$N02BA, frequency = 52)
+ts_weekly_N02BE <- ts(weekly_data_wide$N02BE, frequency = 52)
+ts_weekly_N05B <- ts(weekly_data_wide$N05B, frequency = 52)
+ts_weekly_N05C <- ts(weekly_data_wide$N05C, frequency = 52)
+ts_weekly_R03 <- ts(weekly_data_wide$R03, frequency = 52)
+ts_weekly_R06 <- ts(weekly_data_wide$R06, frequency = 52)
+
+
+# Perform STL decomposition for each drug category
+stl_weekly_M01AB <- stl(ts_weekly_M01AB, s.window = "periodic")
+stl_weekly_M01AE <- stl(ts_weekly_M01AE, s.window = "periodic")
+stl_weekly_N02BA <- stl(ts_weekly_N02BA, s.window = "periodic")
+stl_weekly_N02BE <- stl(ts_weekly_N02BE, s.window = "periodic")
+stl_weekly_N05B <- stl(ts_weekly_N05B, s.window = "periodic")
+stl_weekly_N05C <- stl(ts_weekly_N05C, s.window = "periodic")
+stl_weekly_R03 <- stl(ts_weekly_R03, s.window = "periodic")
+stl_weekly_R06 <- stl(ts_weekly_R06, s.window = "periodic")
+
+# Plot the STL decomposition components for M01AB
+plot(stl_weekly_M01AB, main = "STL Decomposition of Weekly M01AB Sales")
+plot(stl_weekly_M01AE, main = "STL Decomposition of Weekly M01AE Sales")
+plot(stl_weekly_N02BA, main = "STL Decomposition of Weekly N02BA Sales")
+plot(stl_weekly_N02BE, main = "STL Decomposition of Weekly N02BE Sales")
+plot(stl_weekly_N05B, main = "STL Decomposition of Weekly N05B Sales")
+plot(stl_weekly_N05C, main = "STL Decomposition of Weekly N05C Sales")
+plot(stl_weekly_R03, main = "STL Decomposition of Weekly R03 Sales")
+plot(stl_weekly_R06, main = "STL Decomposition of Weekly R06 Sales")
+```
+
+
+
+```{r}
+# Create a list of time series for monthly sales
+ts_monthly_list <- list(
+  M01AB_month = ts_monthly_M01AB,
+  M01AE_month = ts_monthly_M01AE,
+  N02BA_month = ts_monthly_N02BA,
+  N02BE_month = ts_monthly_N02BE,
+  N05B_month = ts_monthly_N05B,
+  N05C_month = ts_monthly_N05C,
+  R03_month = ts_monthly_R03,
+  R06_month = ts_monthly_R06
+)
+
+# Create a list of time series for weekly sales
+ts_weekly_list <- list(
+  M01AB_week = ts_weekly_M01AB,
+  M01AE_week = ts_weekly_M01AE,
+  N02BA_week = ts_weekly_N02BA,
+  N02BE_week = ts_weekly_N02BE,
+  N05B_week = ts_weekly_N05B,
+  N05C_week = ts_weekly_N05C,
+  R03_week = ts_weekly_R03,
+  R06_week = ts_weekly_R06
+)
+
+# Create a list of time series for daily sales
+ts_daily_list <- list(
+  M01AB_day = ts_daily_M01AB,
+  M01AE_day = ts_daily_M01AE,
+  N02BA_day = ts_daily_N02BA,
+  N02BE_day = ts_daily_N02BE,
+  N05B_day = ts_daily_N05B,
+  N05C_day = ts_daily_N05C,
+  R03_day = ts_daily_R03,
+  R06_day = ts_daily_R06
+)
+```
+
+## Forecasting Monthly Sales of M01AB ##
+
+### Holt Winters Model ###
+
+```{r}
+# Split the data into training and testing sets
+cutoff <- floor(0.8 * length(ts_monthly_M01AB))
+train_M01AB <- ts_monthly_M01AB[1:cutoff]
+test_M01AB <- ts_monthly_M01AB[(cutoff + 1):length(ts_monthly_M01AB)]
+```
+
+```{r}
+# Find optimal value of the parameters using ets function
+monthly_M01AB.ets <- ets(train_M01AB, model = "ZZZ")
+monthly_M01AB.ets
+```
+
+```{r}
+# Out-of-sample evaluation
+monthly_M01AB.ets.f <- forecast(monthly_M01AB.ets, h = 18)
+monthly_M01AB.ets.f
+
+plot(train_M01AB)
+lines(fitted(monthly_M01AB.ets.f), col = "red", lty = 2)
+
+plot(monthly_M01AB.ets.f)
+lines(fitted(monthly_M01AB.ets.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(monthly_M01AB.ets.f, test_M01AB)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+monthly_M01AB.ets.model <- ets(ts_monthly_M01AB, model = "ZZZ")
+monthly_M01AB.model.ets.f <- forecast(monthly_M01AB.ets.model, h = 18)
+autoplot(monthly_M01AB.model.ets.f)
+```
+
+### Arima Model ###
+
+```{r}
+# Stationary test
+adf.test(train_M01AB)
+pp.test(train_M01AB)
+kpss.test(train_M01AB)
+
+# Trend stationarity test
+ndiffs(train_M01AB)
+
+# Seasonality stationarity test
+#nsdiffs(train_M01AB)
+```
+
+```{r}
+auto.arima(train_M01AB, trace = TRUE)
+# Best model: ARIMA(0,1,1) (AICc = 477.2356)
+```
+
+```{r}
+#ARIMA model
+train_M01AB.arima <- Arima(train_M01AB, order = c(0,1,1))
+
+# Residual analysis
+checkresiduals(train_M01AB.arima)
+```
+
+```{r}
+# Forecast evaluation
+monthly_M01AB.arima.f <- forecast(train_M01AB.arima, h = 18)
+
+# Plot in sample
+plot(train_M01AB)
+lines(fitted(monthly_M01AB.arima.f), col = "red", lty = 2)
+
+plot(monthly_M01AB.arima.f)
+lines(fitted(monthly_M01AB.arima.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(monthly_M01AB.arima.f, test_M01AB)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+monthly_M01AB.arima.model <- Arima(ts_monthly_M01AB, order = c(0,1,1))
+
+monthly_M01AB.model.arima.f <- forecast(monthly_M01AB.arima.model, h = 18)
+
+autoplot(monthly_M01AB.model.arima.f)
+```
+After comparing both models, we see that the ETS model performs slightly better
+```{r}
+# Forecasting error arima
+accuracy(monthly_M01AB.arima.f, test_M01AB)
+# Forecasting error ets
+accuracy(monthly_M01AB.ets.f, test_M01AB)
+```
+
+
+## Analysis on Weekly Sales of M01AB ##
+
+### Holt Winters Model ###
+
+
+```{r}
+# Split the data into training and testing sets
+cutoff <- floor(0.8 * length(ts_weekly_M01AB))
+train_weekly_M01AB <- ts_weekly_M01AB[1:cutoff]
+test_weekly_M01AB <- ts_weekly_M01AB[(cutoff + 1):length(ts_weekly_M01AB)]
+```
+
+```{r}
+# Find optimal value of the parameters using ets function
+weekly_M01AB.ets <- ets(train_weekly_M01AB, model = "ZZZ")
+weekly_M01AB.ets
+```
+
+```{r}
+# Out-of-sample evaluation
+weekly_M01AB.ets.f <- forecast(weekly_M01AB.ets, h = 78)
+weekly_M01AB.ets.f
+
+plot(train_weekly_M01AB)
+lines(fitted(weekly_M01AB.ets.f), col = "red", lty = 2)
+
+plot(weekly_M01AB.ets.f)
+lines(fitted(weekly_M01AB.ets.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(weekly_M01AB.ets.f, test_weekly_M01AB)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+weekly_M01AB.ets.model <- ets(ts_weekly_M01AB, model = "ZZZ")
+weekly_M01AB.model.ets.f <- forecast(weekly_M01AB.ets.model, h = 63)
+autoplot(weekly_M01AB.model.ets.f)
+```
+
+
+### Arima Model ###
+
+```{r}
+# Stationary test
+adf.test(train_weekly_M01AB)
+pp.test(train_weekly_M01AB)
+kpss.test(train_weekly_M01AB)
+
+# Trend stationarity test
+ndiffs(train_weekly_M01AB)
+
+# Seasonality stationarity test
+#nsdiffs(train_weekly_M01AB)
+```
+
+```{r}
+auto.arima(train_weekly_M01AB, trace = TRUE)
+# Best model: ARIMA(1,1,1) (AICc = 1673.991)
+```
+
+```{r}
+#ARIMA model
+train_weekly_M01AB.arima <- Arima(train_weekly_M01AB, order = c(1,1,1))
+
+# Residual analysis
+checkresiduals(train_weekly_M01AB.arima)
+```
+
+```{r}
+# Forecast evaluation
+weekly_M01AB.arima.f <- forecast(train_weekly_M01AB.arima, h = 78)
+
+# Plot in sample
+plot(train_weekly_M01AB)
+lines(fitted(weekly_M01AB.arima.f), col = "red", lty = 2)
+
+plot(weekly_M01AB.arima.f)
+lines(fitted(weekly_M01AB.arima.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(weekly_M01AB.arima.f, test_weekly_M01AB)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+weekly_M01AB.arima.model <- Arima(ts_weekly_M01AB, order = c(1,1,1))
+
+weekly_M01AB.model.arima.f <- forecast(weekly_M01AB.arima.model, h = 78)
+
+autoplot(weekly_M01AB.model.arima.f)
+```
+
+```{r}
+# Forecasting error arima
+accuracy(weekly_M01AB.arima.f, test_weekly_M01AB)
+# Forecasting error ets
+accuracy(weekly_M01AB.ets.f, test_weekly_M01AB)
+```
+
+
+## Forecasting Monthly Sales of M01AE ##
+
+### Holt Winters Model ###
+
+```{r}
+
+```
+
+
+```{r}
+# Convert the list of time series into a matrix
+ts_monthly_matrix <- do.call(cbind, ts_monthly_list)
+
+# Transpose the matrix so that each row represents a drug category
+ts_monthly_matrix <- t(ts_monthly_matrix)
+
+# Compute the distance matrix using Euclidean distance between time series
+dist_monthly_matrix <- dist(ts_monthly_matrix, method = "euclidean")
+
+# Perform hierarchical clustering using Ward's method
+monthly_hc <- hclust(dist_monthly_matrix, method = "ward.D2")
+
+# Cut the tree at a certain height to obtain clusters
+height_cut <- 1500
+monthly_clusters <- cutree(monthly_hc, h = height_cut)
+
+# Print the cluster assignments
+print(monthly_clusters)
+
+# Visualize the dendrogram with the cut height
+plot(monthly_hc, hang = -1, main = "Monthly Hierarchical Clustering of Drug Categories")
+abline(h = height_cut, col = "red", lty = 2)
+```
+
+```{r}
+# Convert the list of time series into a matrix
+ts_weekly_matrix <- do.call(cbind, ts_weekly_list)
+
+# Transpose the matrix so that each row represents a drug category
+ts_weekly_matrix <- t(ts_weekly_matrix)
+
+# Compute the distance matrix using Euclidean distance between time series
+dist_weekly_matrix <- dist(ts_weekly_matrix, method = "euclidean")
+
+# Perform hierarchical clustering using Ward's method
+weekly_hc <- hclust(dist_weekly_matrix, method = "ward.D2")
+
+# Cut the tree at a certain height to obtain clusters
+height_cut <- 1500
+weekly_clusters <- cutree(weekly_hc, h = height_cut)
+
+# Print the cluster assignments
+print(weekly_clusters)
+
+# Visualize the dendrogram with the cut height
+plot(weekly_hc, hang = -1, main = "Weekly Hierarchical Clustering of Drug Categories")
+abline(h = height_cut, col = "red", lty = 2)
+```
+
+```{r}
+# Convert the list of time series into a matrix
+ts_daily_matrix <- do.call(cbind, ts_daily_list)
+
+# Transpose the matrix so that each row represents a drug category
+ts_daily_matrix <- t(ts_daily_matrix)
+
+# Compute the distance matrix using Euclidean distance between time series
+dist_daily_matrix <- dist(ts_daily_matrix, method = "euclidean")
+
+# Perform hierarchical clustering using Ward's method
+daily_hc <- hclust(dist_daily_matrix, method = "ward.D2")
+
+# Cut the tree at a certain height to obtain clusters
+height_cut <- 1500
+daily_clusters <- cutree(daily_hc, h = height_cut)
+
+# Print the cluster assignments
+print(daily_clusters)
+
+# Visualize the dendrogram with the cut height
+plot(daily_hc, hang = -1, main = "Daily Hierarchical Clustering of Drug Categories")
+abline(h = height_cut, col = "red", lty = 2)
+```
+
+```{r}
+# Calculate the correlation matrix for drug categories
+drug_correlations <- daily %>%
+  dplyr::select(M01AB, M01AE, N02BA, N02BE, N05B, N05C, R03, R06) %>%
+  cor(method = "pearson")
+
+# Visualize the correlation matrix using corrplot
+corrplot(drug_correlations, method = "color", type = "upper", order = "hclust", addCoef.col = "black", tl.col = "black", tl.srt = 45, diag = FALSE)
+```
+
