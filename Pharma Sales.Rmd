@@ -69,7 +69,7 @@ all_stats <- bind_rows(hourly_stats, daily_stats, weekly_stats, monthly_stats)
 print(all_stats)
 ```
 
-Below we convert the datum columns in each dataframe to the appropriate type to help us when it comes to the forecasting section
+Below we convert the datum columns in each data frame to the appropriate type to help us when it comes to the forecasting section
 ```{r}
 # Convert the 'datum' column to a date/time format (POSIXct) for hourly sales
 hourly$datum <- as.POSIXct(hourly$datum, format = "%m/%d/%Y %H:%M")
@@ -85,7 +85,7 @@ monthly$datum <- as.Date(monthly$datum, format="%d/%m/%Y")
 ```
 
 
-Below we plot the weekly sales data as a timeseries on a yearly timeframe to understand the sales patterns for each drug
+Below we plot the weekly sales data as a time series on a yearly time frame to understand the sales patterns for each drug.
 ```{r}
 # Gather drug categories into a single column
 weekly_data_long <- weekly %>%
@@ -102,7 +102,7 @@ ggplot(weekly_data_long, aes(x = datum, y = Sales, color = Category)) +
   theme(legend.title = element_blank())
 ```
 
-Below we plot the monthly sales data as a timeseries on a yearly timeframe to understand the sales patterns for each drug
+Below we plot the monthly sales data as a time series on a yearly time frame to understand the sales patterns for each drug.
 ```{r}
 # Gather drug categories into a single column
 monthly_data_long <- monthly %>%
@@ -311,18 +311,8 @@ ts_weekly_list <- list(
   R06_week = ts_weekly_R06
 )
 
-# Create a list of time series for daily sales
-ts_daily_list <- list(
-  M01AB_day = ts_daily_M01AB,
-  M01AE_day = ts_daily_M01AE,
-  N02BA_day = ts_daily_N02BA,
-  N02BE_day = ts_daily_N02BE,
-  N05B_day = ts_daily_N05B,
-  N05C_day = ts_daily_N05C,
-  R03_day = ts_daily_R03,
-  R06_day = ts_daily_R06
-)
 ```
+
 
 ## Forecasting Monthly Sales of M01AB ##
 
@@ -334,13 +324,13 @@ cutoff <- floor(0.8 * length(ts_monthly_M01AB))
 train_M01AB <- ts_monthly_M01AB[1:cutoff]
 test_M01AB <- ts_monthly_M01AB[(cutoff + 1):length(ts_monthly_M01AB)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_M01AB <- ts(train_M01AB, frequency = 12)
 ```
 
 ```{r}
-# Find optimal value of the parameters using ets function
-monthly_M01AB.ets <- ets(train_M01AB, model = "ZZZ")
+# Find optimal value of the parameters using ETS function
+monthly_M01AB.ets <- ets(train_M01AB, model = "MAN")
 monthly_M01AB.ets
 ```
 
@@ -363,10 +353,18 @@ accuracy(monthly_M01AB.ets.f, test_M01AB)
 
 ```{r}
 # Re-calibrate model with the entire sample
-monthly_M01AB.ets.model <- ets(ts_monthly_M01AB, model = "MNN")
+monthly_M01AB.ets.model <- ets(ts_monthly_M01AB, model = "MAN")
+
 monthly_M01AB.model.ets.f <- forecast(monthly_M01AB.ets.model, h = 18)
+
 autoplot(monthly_M01AB.model.ets.f)
 ```
+
+```{r}
+# Model Results
+monthly_M01AB.model.ets.f
+```
+
 
 ### Arima Model ###
 
@@ -382,6 +380,14 @@ ndiffs(train_M01AB)
 # Seasonality stationarity test
 nsdiffs(train_M01AB)
 ```
+
+```{r}
+
+# Take first order difference make time series stationary
+train_M01AB_diff1 <- diff(train_M01AB, differences = 1)
+autoplot(train_M01AB_diff1)
+```
+
 
 ```{r}
 auto.arima(train_M01AB, trace = TRUE)
@@ -421,11 +427,13 @@ monthly_M01AB.model.arima.f <- forecast(monthly_M01AB.arima.model, h = 18)
 
 autoplot(monthly_M01AB.model.arima.f)
 ```
-After comparing both models, we see that the ETS model performs slightly better
+
+After comparing both models, we see that the ETS model performs better
 ```{r}
-# Forecasting error arima
+# Forecasting error ARIMA
 accuracy(monthly_M01AB.arima.f, test_M01AB)
-# Forecasting error ets
+
+# Forecasting error ETS
 accuracy(monthly_M01AB.ets.f, test_M01AB)
 ```
 
@@ -441,13 +449,13 @@ cutoff <- floor(0.8 * length(ts_weekly_M01AB))
 train_weekly_M01AB <- ts_weekly_M01AB[1:cutoff]
 test_weekly_M01AB <- ts_weekly_M01AB[(cutoff + 1):length(ts_weekly_M01AB)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_weekly_M01AB <- ts(train_weekly_M01AB, frequency = 52)
 ```
 
 ```{r}
-# Find optimal value of the parameters using ets function
-weekly_M01AB.ets <- ets(train_weekly_M01AB, model = "ZZZ")
+# Find optimal value of the parameters using ETS function
+weekly_M01AB.ets <- ets(train_weekly_M01AB, model = "MAN")
 weekly_M01AB.ets
 ```
 
@@ -470,8 +478,10 @@ accuracy(weekly_M01AB.ets.f, test_weekly_M01AB)
 
 ```{r}
 # Re-calibrate model with the entire sample
-weekly_M01AB.ets.model <- ets(ts_weekly_M01AB, model = "ZZZ")
+weekly_M01AB.ets.model <- ets(ts_weekly_M01AB, model = "MAN")
+
 weekly_M01AB.model.ets.f <- forecast(weekly_M01AB.ets.model, h = 63)
+
 autoplot(weekly_M01AB.model.ets.f)
 ```
 
@@ -493,7 +503,7 @@ nsdiffs(train_weekly_M01AB)
 
 ```{r}
 auto.arima(train_weekly_M01AB, trace = TRUE)
-# Best model: ARIMA(1,1,1) (AICc = 1673.991)
+# Best model: ARIMA(1,1,1) (AICc = 1658.304)
 ```
 
 ```{r}
@@ -530,10 +540,22 @@ weekly_M01AB.model.arima.f <- forecast(weekly_M01AB.arima.model, h = 78)
 autoplot(weekly_M01AB.model.arima.f)
 ```
 
+We can see below the ETS model performs better.
 ```{r}
-# Forecasting error arima
+# Forecasting error ARIMA
 accuracy(weekly_M01AB.arima.f, test_weekly_M01AB)
-# Forecasting error ets
+
+# Forecasting error ETS
+accuracy(weekly_M01AB.ets.f, test_weekly_M01AB)
+```
+
+### Compare Errors of Monthly and Weekly Sales of M01AB ###
+To compare weekly and monthly forecasts we will use MAPE instead of RMSE because of the different scales of the values.
+```{r}
+# Forecasting Monthly Sales error ETS
+accuracy(monthly_M01AB.ets.f, test_M01AB)
+
+# Forecasting Weekly Sales error ETS
 accuracy(weekly_M01AB.ets.f, test_weekly_M01AB)
 ```
 
@@ -548,13 +570,13 @@ cutoff <- floor(0.8 * length(ts_monthly_M01AE))
 train_M01AE <- ts_monthly_M01AE[1:cutoff]
 test_M01AE <- ts_monthly_M01AE[(cutoff + 1):length(ts_monthly_M01AE)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_M01AE <- ts(train_M01AE, frequency = 12)
 ```
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_M01AE.ets <- ets(train_M01AE, model = "ZZZ")
+monthly_M01AE.ets <- ets(train_M01AE, model = "ANN")
 monthly_M01AE.ets
 ```
 
@@ -562,8 +584,10 @@ monthly_M01AE.ets
 # Out-of-sample evaluation
 monthly_M01AE.ets.f <- forecast(monthly_M01AE.ets, h = 18)
 monthly_M01AE.ets.f
+
 plot(train_M01AE)
 lines(fitted(monthly_M01AE.ets.f), col = "red", lty = 2)
+
 plot(monthly_M01AE.ets.f)
 lines(fitted(monthly_M01AE.ets.f), col = "blue", lty = 2)
 ```
@@ -576,8 +600,15 @@ accuracy(monthly_M01AE.ets.f, test_M01AE)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_M01AE.ets.model <- ets(ts_monthly_M01AE, model = "ANN")
+
 monthly_M01AE.model.ets.f <- forecast(monthly_M01AE.ets.model, h = 18)
+
 autoplot(monthly_M01AE.model.ets.f)
+```
+
+```{r}
+# Point Forecasts
+monthly_M01AE.model.ets.f
 ```
 
 
@@ -602,8 +633,9 @@ auto.arima(train_M01AE, trace = TRUE)
 ```
 
 ```{r}
-#ARIMA model
+# ARIMA model
 train_M01AE.arima <- Arima(train_M01AE, order = c(0,0,0), include.mean = TRUE)
+
 # Residual analysis
 checkresiduals(train_M01AE.arima)
 ```
@@ -611,9 +643,11 @@ checkresiduals(train_M01AE.arima)
 ```{r}
 # Forecast evaluation
 monthly_M01AE.arima.f <- forecast(train_M01AE.arima, h = 18)
+
 # Plot in sample
 plot(train_M01AE)
 lines(fitted(monthly_M01AE.arima.f), col = "red", lty = 2)
+
 plot(monthly_M01AE.arima.f)
 lines(fitted(monthly_M01AE.arima.f), col = "blue", lty = 2)
 ```
@@ -626,14 +660,18 @@ accuracy(monthly_M01AE.arima.f, test_M01AE)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_M01AE.arima.model <- Arima(ts_monthly_M01AE, order = c(0,0,0), include.mean = TRUE)
+
 monthly_M01AE.model.arima.f <- forecast(monthly_M01AE.arima.model, h = 18)
+
 autoplot(monthly_M01AE.model.arima.f)
 ```
-After comparing both models, we see that the ETS model performs slightly better
+
+After comparing both models, we see that the ETS model performs slightly better.
 ```{r}
-# Forecasting error arima
+# Forecasting error ARIMA
 accuracy(monthly_M01AE.arima.f, test_M01AE)
-# Forecasting error ets
+
+# Forecasting error ETS
 accuracy(monthly_M01AE.ets.f, test_M01AE)
 ```
 
@@ -647,13 +685,13 @@ cutoff <- floor(0.8 * length(ts_monthly_N02BA))
 train_N02BA <- ts_monthly_N02BA[1:cutoff]
 test_N02BA <- ts_monthly_N02BA[(cutoff + 1):length(ts_monthly_N02BA)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_N02BA <- ts(train_N02BA, frequency = 12)
 ```
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_N02BA.ets <- ets(train_N02BA, model = "ZZZ")
+monthly_N02BA.ets <- ets(train_N02BA, model = "MNN")
 monthly_N02BA.ets
 ```
 
@@ -661,8 +699,10 @@ monthly_N02BA.ets
 # Out-of-sample evaluation
 monthly_N02BA.ets.f <- forecast(monthly_N02BA.ets, h = 18)
 monthly_N02BA.ets.f
+
 plot(train_N02BA)
 lines(fitted(monthly_N02BA.ets.f), col = "red", lty = 2)
+
 plot(monthly_N02BA.ets.f)
 lines(fitted(monthly_N02BA.ets.f), col = "blue", lty = 2)
 ```
@@ -675,9 +715,17 @@ accuracy(monthly_N02BA.ets.f, test_N02BA)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N02BA.ets.model <- ets(ts_monthly_N02BA, model = "MNN")
+
 monthly_N02BA.model.ets.f <- forecast(monthly_N02BA.ets.model, h = 18)
+
 autoplot(monthly_N02BA.model.ets.f)
 ```
+
+```{r}
+# Forecast results
+monthly_N02BA.model.ets.f
+```
+
 
 ### Arima Model ###
 
@@ -702,6 +750,7 @@ auto.arima(train_N02BA, trace = TRUE)
 ```{r}
 #ARIMA model
 train_N02BA.arima <- Arima(train_N02BA, order = c(0,1,1), seasonal = list(order = c(1,0,0), period = 12))
+
 # Residual analysis
 checkresiduals(train_N02BA.arima)
 ```
@@ -709,9 +758,11 @@ checkresiduals(train_N02BA.arima)
 ```{r}
 # Forecast evaluation
 monthly_N02BA.arima.f <- forecast(train_N02BA.arima, h = 18)
+
 # Plot in sample
 plot(train_N02BA)
 lines(fitted(monthly_N02BA.arima.f), col = "red", lty = 2)
+
 plot(monthly_N02BA.arima.f)
 lines(fitted(monthly_N02BA.arima.f), col = "blue", lty = 2)
 ```
@@ -724,14 +775,18 @@ accuracy(monthly_N02BA.arima.f, test_N02BA)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N02BA.arima.model <- Arima(ts_monthly_N02BA, order = c(0,1,1), seasonal = list(order = c(1,0,0), period = 12))
+
 monthly_N02BA.model.arima.f <- forecast(monthly_N02BA.arima.model, h = 18)
+
 autoplot(monthly_N02BA.model.arima.f)
 ```
+
 After comparing both models, we see that the ETS model performs slightly better
 ```{r}
-# Forecasting error arima
+# Forecasting error ARIMA
 accuracy(monthly_N02BA.arima.f, test_N02BA)
-# Forecasting error ets
+
+# Forecasting error ETS
 accuracy(monthly_N02BA.ets.f, test_N02BA)
 ```
 
@@ -745,13 +800,13 @@ cutoff <- floor(0.8 * length(ts_monthly_N02BE))
 train_N02BE <- ts_monthly_N02BE[1:cutoff]
 test_N02BE <- ts_monthly_N02BE[(cutoff + 1):length(ts_monthly_N02BE)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_N02BE <- ts(train_N02BE, frequency = 12)
 ```
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_N02BE.ets <- ets(train_N02BE, model = "ZZZ")
+monthly_N02BE.ets <- ets(train_N02BE, model = "MNM")
 monthly_N02BE.ets
 ```
 
@@ -759,8 +814,10 @@ monthly_N02BE.ets
 # Out-of-sample evaluation
 monthly_N02BE.ets.f <- forecast(monthly_N02BE.ets, h = 18)
 monthly_N02BE.ets.f
+
 plot(train_N02BE)
 lines(fitted(monthly_N02BE.ets.f), col = "red", lty = 2)
+
 plot(monthly_N02BE.ets.f)
 lines(fitted(monthly_N02BE.ets.f), col = "blue", lty = 2)
 ```
@@ -773,7 +830,9 @@ accuracy(monthly_N02BE.ets.f, test_N02BE)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N02BE.ets.model <- ets(ts_monthly_N02BE, model = "MNM")
+
 monthly_N02BE.model.ets.f <- forecast(monthly_N02BE.ets.model, h = 18)
+
 autoplot(monthly_N02BE.model.ets.f)
 ```
 
@@ -812,6 +871,7 @@ monthly_N02BE.arima.f <- forecast(train_N02BE.arima, h = 18)
 # Plot in sample
 plot(train_N02BE)
 lines(fitted(monthly_N02BE.arima.f), col = "red", lty = 2)
+
 plot(monthly_N02BE.arima.f)
 lines(fitted(monthly_N02BE.arima.f), col = "blue", lty = 2)
 ```
@@ -824,15 +884,24 @@ accuracy(monthly_N02BE.arima.f, test_N02BE)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N02BE.arima.model <- Arima(ts_monthly_N02BE, order = c(1,0,0), seasonal = list(order = c(1,1,0), period = 12))
+
 monthly_N02BE.model.arima.f <- forecast(monthly_N02BE.arima.model, h = 18)
+
 autoplot(monthly_N02BE.model.arima.f)
 ```
-After comparing both models, we see that the ETS model performs slightly better
+
 ```{r}
-# Forecasting error arima
+# Point Forecasts
+monthly_N02BE.model.arima.f
+```
+
+
+After comparing both models, we see that the ARIMA model performs better
+```{r}
+# Forecasting error ARIMA
 accuracy(monthly_N02BE.arima.f, test_N02BE)
 
-# Forecasting error ets
+# Forecasting error ETS
 accuracy(monthly_N02BE.ets.f, test_N02BE)
 ```
 
@@ -846,13 +915,13 @@ cutoff <- floor(0.8 * length(ts_monthly_N05B))
 train_N05B <- ts_monthly_N05B[1:cutoff]
 test_N05B <- ts_monthly_N05B[(cutoff + 1):length(ts_monthly_N05B)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_N05B <- ts(train_N05B, frequency = 12)
 ```
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_N05B.ets <- ets(train_N05B, model = "ZZZ")
+monthly_N05B.ets <- ets(train_N05B, model = "MNN")
 monthly_N05B.ets
 ```
 
@@ -876,9 +945,17 @@ accuracy(monthly_N05B.ets.f, test_N05B)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N05B.ets.model <- ets(ts_monthly_N05B, model = "MNN")
+
 monthly_N05B.model.ets.f <- forecast(monthly_N05B.ets.model, h = 18)
+
 autoplot(monthly_N05B.model.ets.f)
 ```
+
+```{r}
+# Point Forecast
+monthly_N05B.model.ets.f
+```
+
 
 ### Arima Model ###
 
@@ -898,6 +975,7 @@ nsdiffs(train_N05B)
 ```{r}
 # Take first order difference make time series stationary
 train_N05B_diff1 <- diff(train_N05B, differences = 1)
+
 autoplot(train_N05B_diff1)
 ```
 
@@ -935,15 +1013,18 @@ accuracy(monthly_N05B.arima.f, test_N05B)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N05B.arima.model <- Arima(ts_monthly_N05B, order = c(0,1,0))
+
 monthly_N05B.model.arima.f <- forecast(monthly_N05B.arima.model, h = 18)
+
 autoplot(monthly_N05B.model.arima.f)
 ```
+
 After comparing both models, we see that the ETS model performs slightly better
 ```{r}
-# Forecasting error arima
+# Forecasting error ARIMA
 accuracy(monthly_N05B.arima.f, test_N05B)
 
-# Forecasting error ets
+# Forecasting error ETS
 accuracy(monthly_N05B.ets.f, test_N05B)
 ```
 
@@ -964,7 +1045,7 @@ train_N05C <- ts(train_N05C, frequency = 12)
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_N05C.ets <- ets(train_N05C, model = "ZZZ")
+monthly_N05C.ets <- ets(train_N05C, model = "MAN")
 monthly_N05C.ets
 ```
 
@@ -988,7 +1069,9 @@ accuracy(monthly_N05C.ets.f, test_N05C)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N05C.ets.model <- ets(ts_monthly_N05C, model = "MAN")
+
 monthly_N05C.model.ets.f <- forecast(monthly_N05C.ets.model, h = 18)
+
 autoplot(monthly_N05C.model.ets.f)
 ```
 
@@ -1040,15 +1123,24 @@ accuracy(monthly_N05C.arima.f, test_N05C)
 ```{r}
 # Re-calibrate model with the entire sample
 monthly_N05C.arima.model <- Arima(ts_monthly_N05C, order = c(1,0,0), include.mean = TRUE)
+
 monthly_N05C.model.arima.f <- forecast(monthly_N05C.arima.model, h = 18)
+
 autoplot(monthly_N05C.model.arima.f)
 ```
 
-After comparing both models, we see that the ETS model performs slightly better
 ```{r}
-# Forecasting error arima
+# Point Forecasts
+monthly_N05C.model.arima.f
+```
+
+
+After comparing both models, we see that the ARIMA model performs better
+```{r}
+# Forecasting error ARIMA
 accuracy(monthly_N05C.arima.f, test_N05C)
-# Forecasting error ets
+
+# Forecasting error ETS
 accuracy(monthly_N05C.ets.f, test_N05C)
 ```
 
@@ -1062,13 +1154,13 @@ cutoff <- floor(0.8 * length(ts_monthly_R03))
 train_R03 <- ts_monthly_R03[1:cutoff]
 test_R03 <- ts_monthly_R03[(cutoff + 1):length(ts_monthly_R03)]
 
-# Ensure data is in timeseries format
+# Ensure data is in time series format
 train_R03 <- ts(train_R03, frequency = 12)
 ```
 
 ```{r}
 # Find optimal value of the parameters using ets function
-monthly_R03.ets <- ets(train_R03, model = "ZZZ")
+monthly_R03.ets <- ets(train_R03, model = "MNA")
 monthly_R03.ets
 ```
 
@@ -1160,7 +1252,13 @@ monthly_R03.model.arima.f <- forecast(monthly_R03.arima.model, h = 18)
 autoplot(monthly_R03.model.arima.f)
 ```
 
-After comparing both models, we see that the ARIMA model performs better
+```{r}
+# Point Forecasts
+monthly_R03.model.arima.f
+```
+
+
+After comparing both models, we see that the ARIMA model performs better.
 ```{r}
 # Forecasting error ARIMA
 accuracy(monthly_R03.arima.f, test_R03)
@@ -1169,9 +1267,233 @@ accuracy(monthly_R03.arima.f, test_R03)
 accuracy(monthly_R03.ets.f, test_R03)
 ```
 
+## Forecasting Monthly Sales of R06 ##
+
+### Holt Winters Model ###
+
+```{r}
+# Split the data into training and testing sets
+cutoff <- floor(0.8 * length(ts_monthly_R06))
+train_R06 <- ts_monthly_R06[1:cutoff]
+test_R06 <- ts_monthly_R06[(cutoff + 1):length(ts_monthly_R06)]
+
+# Ensure data is in time series format
+train_R06 <- ts(train_R06, frequency = 12)
+```
+
+```{r}
+# Find optimal value of the parameters using ets function
+monthly_R06.ets <- ets(train_R06, model = "MAM")
+monthly_R06.ets
+```
+
+```{r}
+# Out-of-sample evaluation
+monthly_R06.ets.f <- forecast(monthly_R06.ets, h = 18)
+monthly_R06.ets.f
+
+plot(train_R06)
+lines(fitted(monthly_R06.ets.f), col = "red", lty = 2)
+
+plot(monthly_R06.ets.f)
+lines(fitted(monthly_R06.ets.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(monthly_R06.ets.f, test_R06)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+monthly_R06.ets.model <- ets(ts_monthly_R06, model = "MAM")
+
+monthly_R06.model.ets.f <- forecast(monthly_R06.ets.model, h = 18)
+
+autoplot(monthly_R06.model.ets.f)
+```
+
+```{r}
+# Point Forecasts
+monthly_R06.model.ets.f
+```
 
 
-## Extras ##
+### Arima Model ###
+
+```{r}
+# Stationary test
+adf.test(train_R06)
+pp.test(train_R06)
+kpss.test(train_R06)
+
+# Trend stationarity test
+ndiffs(train_R06)
+
+# Seasonality stationarity test
+nsdiffs(train_R06)
+```
+
+
+```{r}
+auto.arima(train_R06, trace = TRUE)
+# Best model: ARIMA(0,0,0)(0,1,1)[12] with drift (AICc = 402.4473)
+```
+
+```{r}
+# ARIMA model
+train_R06.arima <- Arima(train_R06, order = c(0,0,0), seasonal = list(order = c(0,1,1), period = 12), include.drift = TRUE)
+
+# Residual analysis
+checkresiduals(train_R06.arima)
+```
+
+```{r}
+# Forecast evaluation
+monthly_R06.arima.f <- forecast(train_R06.arima, h = 18)
+
+# Plot in sample
+plot(train_R06)
+lines(fitted(monthly_R06.arima.f), col = "red", lty = 2)
+
+plot(monthly_R06.arima.f)
+lines(fitted(monthly_R06.arima.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(monthly_R06.arima.f, test_R06)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+monthly_R06.arima.model <- Arima(ts_monthly_R06, order = c(0,0,0), seasonal = list(order = c(0,1,1), period = 12), include.drift = TRUE)
+
+monthly_R06.model.arima.f <- forecast(monthly_R06.arima.model, h = 18)
+
+autoplot(monthly_R06.model.arima.f)
+```
+
+After comparing both models, we see that the ARIMA model performs slightly better
+```{r}
+# Forecasting error ARIMA
+accuracy(monthly_R06.arima.f, test_R06)
+
+# Forecasting error ETS
+accuracy(monthly_R06.ets.f, test_R06)
+```
+
+## Forecasting Weekly Sales of R06 ##
+
+### Holt Winters Model ###
+
+
+```{r}
+# Split the data into training and testing sets
+cutoff <- floor(0.8 * length(ts_weekly_R06))
+train_weekly_R06 <- ts_weekly_R06[1:cutoff]
+test_weekly_R06 <- ts_weekly_R06[(cutoff + 1):length(ts_weekly_R06)]
+
+# Ensure data is in time series format
+train_weekly_R06 <- ts(train_weekly_R06, frequency = 52)
+```
+
+```{r}
+# Find optimal value of the parameters using ets function
+weekly_R06.ets <- ets(train_weekly_R06, model = "ZZZ")
+weekly_R06.ets
+```
+
+```{r}
+# Out-of-sample evaluation
+weekly_R06.ets.f <- forecast(weekly_R06.ets, h = 78)
+weekly_R06.ets.f
+
+plot(train_weekly_R06)
+lines(fitted(weekly_R06.ets.f), col = "red", lty = 2)
+
+plot(weekly_R06.ets.f)
+lines(fitted(weekly_R06.ets.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(weekly_R06.ets.f, test_weekly_R06)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+weekly_R06.ets.model <- ets(ts_weekly_R06, model = "MAN")
+
+weekly_R06.model.ets.f <- forecast(weekly_R06.ets.model, h = 63)
+
+autoplot(weekly_R06.model.ets.f)
+```
+
+### Arima Model ###
+
+```{r}
+# Stationary test
+adf.test(train_weekly_R06)
+pp.test(train_weekly_R06)
+kpss.test(train_weekly_R06)
+
+# Trend stationarity test
+ndiffs(train_weekly_R06)
+
+# Seasonality stationarity test
+nsdiffs(train_weekly_R06)
+```
+
+```{r}
+auto.arima(train_weekly_R06, trace = TRUE)
+# Best model: ARIMA(1,0,0)(0,1,0)[52] with drift (AICc = 1361.014)
+```
+
+```{r}
+#ARIMA model
+train_weekly_R06.arima <- Arima(train_weekly_R06, order = c(1,0,0), seasonal = list(order = c(0,1,0), period = 52), include.drift = TRUE)
+
+# Residual analysis
+checkresiduals(train_weekly_R06.arima)
+```
+
+```{r}
+# Forecast evaluation
+weekly_R06.arima.f <- forecast(train_weekly_R06.arima, h = 78)
+
+# Plot in sample
+plot(train_weekly_R06)
+lines(fitted(weekly_R06.arima.f), col = "red", lty = 2)
+
+plot(weekly_R06.arima.f)
+lines(fitted(weekly_R06.arima.f), col = "blue", lty = 2)
+```
+
+```{r}
+# Forecasting error
+accuracy(weekly_M01AB.arima.f, test_weekly_R06)
+```
+
+```{r}
+# Re-calibrate model with the entire sample
+weekly_R06.arima.model <- Arima(ts_weekly_R06, order = c(1,0,0), seasonal = list(order = c(0,1,0), period = 52), include.drift = TRUE)
+
+weekly_R06.model.arima.f <- forecast(weekly_R06.arima.model, h = 78)
+
+autoplot(weekly_R06.model.arima.f)
+```
+
+```{r}
+# Forecasting error ARIMA
+accuracy(weekly_R06.arima.f, test_weekly_R06)
+
+# Forecasting error ETS
+accuracy(weekly_R06.ets.f, test_weekly_R06)
+```
+
+
+## Clustering ##
 ```{r}
 # Convert the list of time series into a matrix
 ts_monthly_matrix <- do.call(cbind, ts_monthly_list)
@@ -1222,31 +1544,8 @@ plot(weekly_hc, hang = -1, main = "Weekly Hierarchical Clustering of Drug Catego
 abline(h = height_cut, col = "red", lty = 2)
 ```
 
-```{r}
-# Convert the list of time series into a matrix
-ts_daily_matrix <- do.call(cbind, ts_daily_list)
 
-# Transpose the matrix so that each row represents a drug category
-ts_daily_matrix <- t(ts_daily_matrix)
-
-# Compute the distance matrix using Euclidean distance between time series
-dist_daily_matrix <- dist(ts_daily_matrix, method = "euclidean")
-
-# Perform hierarchical clustering using Ward's method
-daily_hc <- hclust(dist_daily_matrix, method = "ward.D2")
-
-# Cut the tree at a certain height to obtain clusters
-height_cut <- 1500
-daily_clusters <- cutree(daily_hc, h = height_cut)
-
-# Print the cluster assignments
-print(daily_clusters)
-
-# Visualize the dendrogram with the cut height
-plot(daily_hc, hang = -1, main = "Daily Hierarchical Clustering of Drug Categories")
-abline(h = height_cut, col = "red", lty = 2)
-```
-
+## Correlation of Drug Sales ##
 ```{r}
 # Calculate the correlation matrix for drug categories
 drug_correlations <- daily %>%
